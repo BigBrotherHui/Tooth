@@ -1,15 +1,8 @@
-#include "mainwindow.h"
 
-#include <QApplication>
-#include <QmitkRegisterClasses.h>
-#include <vtkOutputWindow.h>
-
+#include "PointSelectionWindowInterface.h"
 int main(int argc, char *argv[])
 {
-    QmitkRegisterClasses();
-    vtkOutputWindow::GlobalWarningDisplayOff();
-    QApplication a(argc, argv);
-    MainWindow w;
-    w.show();
-    return a.exec();
+    PointSelectionWindowInterface w;
+    w.OpenWindow();
+    return 0;
 }

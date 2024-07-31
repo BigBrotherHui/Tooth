@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Demo VERSION 0.1 LANGUAGES CXX)
+project(PointSelectionWindowInterface VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -26,9 +26,9 @@ source_group("Header Files" REGULAR_EXPRESSION ".h$")
 source_group("Source Files" FILES ${SRC_FILES})
 source_group("Forms" REGULAR_EXPRESSION ".ui$")
 source_group("Generated Files" REGULAR_EXPRESSION "ui_.*\\.h$|moc.*\\.cpp$|\\.stamp$|\\.rule$")
-include_directories(${CMAKE_SOURCE_DIR}/CommonHeader)
-#add_library(${PROJECT_NAME} SHARED ${PROJECT_SOURCES})
-add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
+
+add_library(${PROJECT_NAME} SHARED ${PROJECT_SOURCES})
+#add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Widgets Qt5::Core ${ITK_LIBRARIES} ${VTK_LIBRARIES}
 MitkCore MitkQtWidgets MitkDataTypesExt

@@ -60,6 +60,34 @@
        </widget>
       </item>
       <item>
+       <widget class="QPushButton" name="pushButton_extractISO">
+        <property name="text">
+         <string>初始化牙模型位置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pushButton_modelMark">
+        <property name="text">
+         <string>牙齿模型标记点</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pushButton_CTMark">
+        <property name="text">
+         <string>CT标记点</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pushButton_roughRegister">
+        <property name="text">
+         <string>粗配准</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QPushButton" name="pushButton_selectPoint">
         <property name="text">
          <string>交互孔位置选择</string>
