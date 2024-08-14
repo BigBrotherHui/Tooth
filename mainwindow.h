@@ -38,6 +38,10 @@ private slots:
     void on_pushButton_modelMark_clicked();
     void on_pushButton_CTMark_clicked();
     void on_pushButton_roughRegister_clicked();
+    void on_pushButton_reset_clicked();
+protected:
+    void SlotPointMarkFinished();
+    void OnFollowedGeometryModified();
 private:
     Ui::MainWindow* ui;
     ThreeSliceWidget* m_stdMultiWidget;
@@ -48,6 +52,10 @@ private:
     std::string m_stlName[2]{ "teethModel","tool" };
     int m_stlIndex{ 0 };
     int m_pointIndex{ 0 };
-    PointSetDataNodeInteractor::Pointer m_interactor;
+    PointSetDataNodeInteractor::Pointer m_interactor{nullptr};
+    mitk::DataNode* m_activeDataNode{ nullptr };
+    int m_maxPoints{ 0 };
+    vtkSmartPointer<vtkMatrix4x4> m_tool2teethModel = vtkSmartPointer<vtkMatrix4x4>::New();
+    QMap<std::string, std::string> m_objectNameMap;
 };
 #endif // MAINWINDOW_H

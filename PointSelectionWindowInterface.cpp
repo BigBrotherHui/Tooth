@@ -44,12 +44,12 @@ PointSelectionWindowInterface::Impl::~Impl()
 {
 	if(m_mainWindow)
 	{
-		m_mainWindow->deleteLater();
+		delete m_mainWindow;
 		m_mainWindow = nullptr;
 	}
 	if(m_application)
 	{
-		m_application->deleteLater();
+		delete m_application;
 		m_application = nullptr;
 	}
 }

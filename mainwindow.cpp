@@ -37,6 +37,8 @@
 #include <vtkLandmarkTransform.h>
 #include <vtkTransformPolyDataFilter.h>
 #include <vtkVertexGlyphFilter.h>
+#include <mitkNodePredicateDataType.h>
+#include <mitkPointSet.h>
 VTK_MODULE_INIT(vtkRenderingOpenGL2);
 VTK_MODULE_INIT(vtkRenderingVolumeOpenGL2);
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -76,7 +78,12 @@ void MainWindow::addSTLFile(const std::string& filePath, const std::string objec
     }
     QString newName = QDateTime::currentDateTime().toString("yyyy_MM_dd_hh_mm_ss");
     QString newFilePath = tempDir.path() + "/" + newName + ".stl";
-    QFile::copy(QString::fromStdString(filePath), newFilePath);
+    QFile file(QString::fromLocal8Bit(filePath.c_str()));
+    if (!file.copy(newFilePath))
+    {
+        qDebug() <<"copy failed for"<<file.errorString();
+        return;
+    }
     if (m_stlIndex < 2)
     {
         newName = QString::fromStdString(m_stlName[m_stlIndex]);
@@ -91,14 +98,33 @@ void MainWindow::addSTLFile(const std::string& filePath, const std::string objec
     if (!node)
         return;
     node->SetName(objectName2);
+    m_objectNameMap[objectName] = objectName2;
     m_dataStorage->Add(node);
-    node->SetBoolProperty("pickable", true);
+    if(m_stlIndex==2)
+    {
+        node->SetBoolProperty("pickable", false);
+        auto data = m_dataStorage3D->GetNamedObject<mitk::Surface>(m_stlName[0]);
+        if(data)
+        {
+            auto observer = itk::SimpleMemberCommand<MainWindow>::New();
+            observer->SetCallbackFunction(this, &MainWindow::OnFollowedGeometryModified);
+            if (data->GetGeometry())
+            {
+                data->GetGeometry()->RemoveAllObservers();
+            }
+            data->GetGeometry()->AddObserver(itk::ModifiedEvent(),observer);
+        }
+    }
+    else
+    {
+        node->SetBoolProperty("pickable", true);
+        auto affineDataInteractor = mitk::AffineBaseDataInteractor3D::New();
+        affineDataInteractor->LoadStateMachine("AffineInteraction3D.xml",
+            us::ModuleRegistry::GetModule("MitkDataTypesExt"));
+        affineDataInteractor->SetEventConfig("AffineMouseConfig.xml", us::ModuleRegistry::GetModule("MitkDataTypesExt"));
+        affineDataInteractor->SetDataNode(node);
+    }
     node->SetFloatProperty("line width", 10);
-    auto affineDataInteractor = mitk::AffineBaseDataInteractor3D::New();
-    affineDataInteractor->LoadStateMachine("AffineInteraction3D.xml",
-        us::ModuleRegistry::GetModule("MitkDataTypesExt"));
-    affineDataInteractor->SetEventConfig("AffineMouseConfig.xml", us::ModuleRegistry::GetModule("MitkDataTypesExt"));
-    affineDataInteractor->SetDataNode(node);
     mitk::RenderingManager::GetInstance()->InitializeViewByBoundingObjects(m_stdMultiWidget->getRenderWindow(1)->GetVtkRenderWindow(), m_dataStorage3D);
 }
 
@@ -106,18 +132,48 @@ void MainWindow::setMatrix(const std::string& objectName, vtkMatrix4x4* vmt)
 {
     if (!vmt)
         return;
-    mitk::DataNode* node = m_dataStorage->GetNamedNode(objectName);
+    if (!m_objectNameMap.contains(objectName))
+        return;
+    std::string objName = m_objectNameMap[objectName];
+    mitk::DataNode* node = m_dataStorage->GetNamedNode(objName);
     if (!node)
         return;
     if (!node->GetData() || !node->GetData()->GetGeometry())
         return;
+    auto model = m_dataStorage->GetNamedObject<mitk::Surface>(m_stlName[0]);
+    auto tool = m_dataStorage->GetNamedObject<mitk::Surface>(m_stlName[1]);
+    if(objName==m_stlName[0])
+    {
+        if(model && tool)
+        {
+            vtkSmartPointer<vtkMatrix4x4> vmt_model = vtkSmartPointer<vtkMatrix4x4>::New();
+            vmt_model->DeepCopy(vmt);
+            vtkSmartPointer<vtkMatrix4x4> vmt_tool = vtkSmartPointer<vtkMatrix4x4>::New();
+            vmt_tool->DeepCopy(tool->GetGeometry()->GetVtkMatrix());
+            vmt_model->Invert();
+            vtkMatrix4x4::Multiply4x4(vmt_model, vmt_tool, m_tool2teethModel);
+        }
+    }
+    else if(objName ==m_stlName[1])
+    {
+        if (model && tool)
+        {
+            vtkSmartPointer<vtkMatrix4x4> vmt_model = vtkSmartPointer<vtkMatrix4x4>::New();
+            vmt_model->DeepCopy(model->GetGeometry()->GetVtkMatrix());
+            vtkSmartPointer<vtkMatrix4x4> vmt_tool = vtkSmartPointer<vtkMatrix4x4>::New();
+            vmt_tool->DeepCopy(vmt);
+            vmt_model->Invert();
+            vtkMatrix4x4::Multiply4x4(vmt_model, vmt_tool, m_tool2teethModel);
+        }
+    }
     node->GetData()->GetGeometry()->SetIndexToWorldTransformByVtkMatrix(vmt);
     mitk::RenderingManager::GetInstance()->RequestUpdateAll();
 }
 
 vtkMatrix4x4* MainWindow::getMatrix(const std::string& objectName)
 {
-    mitk::DataNode* node = m_dataStorage->GetNamedNode(objectName);
+    std::string objName = m_objectNameMap[objectName];
+    mitk::DataNode* node = m_dataStorage->GetNamedNode(objName);
     if (!node)
         return nullptr;
     if (!node->GetData() || !node->GetData()->GetGeometry())
@@ -127,18 +183,30 @@ vtkMatrix4x4* MainWindow::getMatrix(const std::string& objectName)
 
 std::vector<std::array<std::array<double, 3>, 2> > MainWindow::getPointPairPosition()
 {
+    mitk::Surface* teethModel = m_dataStorage->GetNamedObject<mitk::Surface>(m_stlName[0]);
+    if (!teethModel)
+        return std::vector<std::array<std::array<double, 3>, 2> >();
+    vtkSmartPointer<vtkMatrix4x4> vmt = vtkSmartPointer<vtkMatrix4x4>::New();
+    vmt->DeepCopy(teethModel->GetGeometry()->GetVtkMatrix());
+    vmt->Invert();
     std::vector<std::array<std::array<double, 3>, 2> > result;
     std::array<std::array<double, 3>, 2> tmp;
     for(int i=0;i<m_pointIndex;++i)
     {
-        mitk::PointSet* targetPoint = m_dataStorage->GetNamedObject<mitk::PointSet>(QString("targetPoint%1").arg(QString::number(i)).toStdString());
+        mitk::PointSet* targetPoint = m_dataStorage->GetNamedObject<mitk::PointSet>(QString("targetPoint%1").arg(QString::number(i+1)).toStdString());
         if (!targetPoint || targetPoint->GetSize() != 2)
             continue;
-        for (int i = 0; i < 2; ++i)
+        double transformed[4]{0,0,0,1};
+        for (int j = 0; j < 2; ++j)
         {
-            for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 3; ++k)
             {
-                tmp[i][j] = targetPoint->GetPoint(i)[j];
+                transformed[k] = targetPoint->GetPoint(j)[k];
+            }
+            vmt->MultiplyPoint(transformed,transformed);
+            for (int m = 0; m < 3; ++m)
+            {
+                tmp[j][m]=transformed[m];
             }
         }
         result.push_back(tmp);
@@ -394,6 +462,12 @@ void MainWindow::on_pushButton_modelMark_clicked()
     mitk::PointSet::Pointer ps = mitk::PointSet::New();
     dt->SetData(ps);
     mitk::PointSetDataInteractor::Pointer interactor = mitk::PointSetDataInteractor::New();
+    itk::SimpleMemberCommand<MainWindow>::Pointer command = itk::SimpleMemberCommand<MainWindow>::New();
+    command->SetCallbackFunction(this, &MainWindow::SlotPointMarkFinished);
+    ps->RemoveAllObservers();
+    ps->AddObserver(mitk::PointSetAddEvent(), command);
+    m_activeDataNode = dt;
+    m_maxPoints = 5;
     interactor->LoadStateMachine("PointSet.xml");
     interactor->SetEventConfig("PointSetConfig.xml");
     interactor->SetMaxPoints(5);
@@ -413,6 +487,12 @@ void MainWindow::on_pushButton_CTMark_clicked()
     mitk::PointSet::Pointer ps = mitk::PointSet::New();
     dt->SetData(ps);
     mitk::PointSetDataInteractor::Pointer interactor = mitk::PointSetDataInteractor::New();
+    itk::SimpleMemberCommand<MainWindow>::Pointer command = itk::SimpleMemberCommand<MainWindow>::New();
+    command->SetCallbackFunction(this, &MainWindow::SlotPointMarkFinished);
+    ps->RemoveAllObservers();
+    ps->AddObserver(mitk::PointSetAddEvent(), command);
+    m_activeDataNode = dt;
+    m_maxPoints = 5;
     interactor->LoadStateMachine("PointSet.xml");
     interactor->SetEventConfig("PointSetConfig.xml");
     interactor->SetMaxPoints(5);
@@ -426,6 +506,11 @@ void MainWindow::on_pushButton_roughRegister_clicked()
     vtkSmartPointer<vtkPoints> targetPoints = vtkSmartPointer<vtkPoints>::New();
     auto sourceps = m_dataStorage3D->GetNamedObject<mitk::PointSet>("modelmark");
     auto targetps = m_dataStorage->GetNamedObject<mitk::PointSet>("ctmark");
+    mitk::Surface* teethModel = m_dataStorage->GetNamedObject<mitk::Surface>(m_stlName[0]);
+    if (!teethModel)
+        return;
+    if (!sourceps || !targetPoints)
+        return;
     if (sourceps->GetSize() < 5 || targetps->GetSize() < 5)
         return;
     for(int i=0;i<5;++i)
@@ -439,11 +524,59 @@ void MainWindow::on_pushButton_roughRegister_clicked()
     landmarkTransform->SetModeToRigidBody();
     landmarkTransform->Update();
     vtkMatrix4x4* vmt = landmarkTransform->GetMatrix();
-    mitk::Surface* teethModel = m_dataStorage->GetNamedObject<mitk::Surface>(m_stlName[0]);
-    if (!teethModel)
-        return;
-    teethModel->GetGeometry()->SetIndexToWorldTransformByVtkMatrix(vmt);
+    vtkSmartPointer<vtkMatrix4x4> result = vtkSmartPointer<vtkMatrix4x4>::New();
+    vtkMatrix4x4::Multiply4x4(vmt, teethModel->GetGeometry()->GetVtkMatrix(), result);
+    teethModel->GetGeometry()->SetIndexToWorldTransformByVtkMatrix(result);
+    teethModel->GetGeometry()->Modified();
+    sourceps->Clear();
+    targetps->Clear();
     mitk::RenderingManager::GetInstance()->InitializeViewsByBoundingObjects(m_dataStorage);
+    mitk::RenderingManager::GetInstance()->RequestUpdateAll();
+}
+
+void MainWindow::on_pushButton_reset_clicked()
+{
+    mitk::NodePredicateDataType::Pointer predicate = mitk::NodePredicateDataType::New(mitk::Image::GetStaticNameOfClass());
+    auto image=m_dataStorage->GetNode(predicate);
+    mitk::RenderingManager::GetInstance()->InitializeViews(image->GetData()->GetTimeGeometry());
+    mitk::NodePredicateDataType::Pointer predicate2 = mitk::NodePredicateDataType::New(mitk::Image::GetStaticNameOfClass());
+    auto image2 = m_dataStorage->GetNode(predicate2);
+    mitk::RenderingManager::GetInstance()->InitializeViews(image2->GetData()->GetTimeGeometry());
+    mitk::RenderingManager::GetInstance()->RequestUpdateAll();
+
+    getPointPairPosition();
+}
+
+void MainWindow::SlotPointMarkFinished()
+{
+    if(m_activeDataNode)
+    {
+        auto interactor=dynamic_cast<mitk::PointSetDataInteractor*>(m_activeDataNode->GetDataInteractor().GetPointer());
+        if (!interactor)
+            return;
+        auto ps = dynamic_cast<mitk::PointSet*>(m_activeDataNode->GetData());
+        if (!ps)
+           return;
+        if(ps->GetSize()==m_maxPoints)
+        {
+            m_activeDataNode->SetDataInteractor(nullptr);
+            m_activeDataNode = nullptr;
+            m_maxPoints = 0;
+        }
+    }
+}
+
+void MainWindow::OnFollowedGeometryModified()
+{
+    auto data = m_dataStorage3D->GetNamedObject<mitk::Surface>(m_stlName[1]);
+    if (!data)
+        return;
+    auto src = m_dataStorage3D->GetNamedObject<mitk::Surface>(m_stlName[0]);
+    if (!src)
+        return;
+    vtkSmartPointer<vtkMatrix4x4> result = vtkSmartPointer<vtkMatrix4x4>::New();
+    vtkMatrix4x4::Multiply4x4(src->GetGeometry()->GetVtkMatrix(), m_tool2teethModel, result);
+    data->GetGeometry()->SetIndexToWorldTransformByVtkMatrix(result);
     mitk::RenderingManager::GetInstance()->RequestUpdateAll();
 }
 

@@ -27,8 +27,8 @@ source_group("Source Files" FILES ${SRC_FILES})
 source_group("Forms" REGULAR_EXPRESSION ".ui$")
 source_group("Generated Files" REGULAR_EXPRESSION "ui_.*\\.h$|moc.*\\.cpp$|\\.stamp$|\\.rule$")
 
-add_library(${PROJECT_NAME} SHARED ${PROJECT_SOURCES})
-#add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
+#add_library(${PROJECT_NAME} SHARED ${PROJECT_SOURCES})
+add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Widgets Qt5::Core ${ITK_LIBRARIES} ${VTK_LIBRARIES}
 MitkCore MitkQtWidgets MitkDataTypesExt
